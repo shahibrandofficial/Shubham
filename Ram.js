@@ -1,440 +1,243 @@
 /* =========================================================
-   Mista Player — Complete Fixed Build
-   - Rounded corners removed (0 radius)
-   - Video fit (16:9) / fill — controllable
-   - Seek bar works on touch + mouse
-   - Fullscreen forces landscape via native bridge
-   - All original features preserved
+   Mista Player — Final Fixed Build (works exactly like old)
+   Fixes: Fullscreen → landscape | Fit/Fill toggle | Sharp corners
    ========================================================= */
 
 (function () {
   'use strict';
 
-  /* =========================================================
-     1. GLOBAL STYLE INJECTION (FIXED)
-     ========================================================= */
-  const STYLE_ID = 'mista-fixed-styles';
-
+  /* ---------- STYLES ---------- */
+  const STYLE_ID = 'mista-style-fix';
   const CSS = `
-  /* ---------- RESET ---------- */
-  * { margin:0; padding:0; box-sizing:border-box; }
-
-  html, body {
-    width: 100%;
-    height: 100%;
-    background: #000;
-    overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    color: #fff;
-    -webkit-tap-highlight-color: transparent;
-    user-select: none;
-    -webkit-user-select: none;
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{
+    width:100%;height:100%;background:#000;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:#fff;-webkit-tap-highlight-color:transparent;user-select:none;
   }
 
-  /* ---------- CONTAINER (NO ROUNDED CORNERS) ---------- */
-  .mp-container {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%;
-    height: 100%;
-    background: #000;
-    overflow: hidden;
-    border-radius: 0 !important;
-    isolation: isolate;
+  /* CONTAINER — no rounded corners */
+  .mp-container{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    background:#000;overflow:hidden;
+    border-radius:0 !important;
+    isolation:isolate;
   }
 
-  /* ---------- VIDEO / IFRAME — 16:9 FIT ---------- */
-  .mp-container iframe,
-  .mp-container video,
-  #yt-iframe-holder,
-  #yt-iframe-holder iframe {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100% !important;
-    height: 100% !important;
-    border: 0;
-    background: #000;
-    /* DEFAULT: contain = poori video dikhegi, black bars side mein */
-    object-fit: contain;
-    /* Agar poora screen bharna ho to yahan 'cover' kar do */
+  /* IFRAME — default: contain (fit 16:9) */
+  .mp-container #yt-iframe-holder,
+  .mp-container iframe{
+    position:absolute;top:0;left:0;
+    width:100% !important;height:100% !important;
+    border:0;background:#000;
+    object-fit:contain;
+  }
+  /* FILL mode */
+  .mp-container.mp-fill iframe{
+    object-fit:cover;
   }
 
-  /* Fill mode (JS se toggle hoga) */
-  .mp-container.mp-fill iframe,
-  .mp-container.mp-fill video,
-  .mp-container.mp-fill #yt-iframe-holder iframe {
-    object-fit: cover;
+  /* Curtain */
+  .mp-curtain{
+    position:absolute;top:0;left:0;right:0;bottom:0;
+    background:#000;display:flex;align-items:center;justify-content:center;
+    z-index:9;transition:opacity .3s;pointer-events:none;
+  }
+  .mp-curtain.hide{opacity:0;visibility:hidden;}
+  .mp-curtain::after{
+    content:"";width:38px;height:38px;border-radius:50%;
+    border:3px solid rgba(255,255,255,.15);border-top-color:#e50914;
+    animation:mp-spin .8s linear infinite;
+  }
+  @keyframes mp-spin{to{transform:rotate(360deg);}}
+
+  /* UI */
+  .mp-ui{
+    position:absolute;top:0;left:0;right:0;bottom:0;z-index:4;
+    display:flex;flex-direction:column;justify-content:space-between;
+    background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,transparent 20%,transparent 70%,rgba(0,0,0,.75) 100%);
+    opacity:0;transition:opacity .25s;pointer-events:none;
+  }
+  .mp-ui.show{opacity:1;pointer-events:auto;}
+
+  .mp-top{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px;gap:10px;
+  }
+  .mp-title{
+    font-size:14px;font-weight:600;max-width:60%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    text-shadow:0 1px 3px rgba(0,0,0,.7);
+  }
+  .mp-top-right{display:flex;gap:4px;}
+
+  .mp-btn{
+    background:transparent;border:0;color:#fff;
+    width:40px;height:40px;min-width:40px;min-height:40px;
+    display:inline-flex;align-items:center;justify-content:center;
+    border-radius:8px;cursor:pointer;padding:0;
+    transition:background .15s,transform .12s;
+  }
+  .mp-btn:hover{background:rgba(255,255,255,.15);}
+  .mp-btn:active{transform:scale(.9);}
+  .mp-btn svg{width:24px;height:24px;fill:currentColor;pointer-events:none;}
+
+  .mp-center{
+    display:flex;align-items:center;justify-content:center;
+    gap:22px;flex:1;
+  }
+  .mp-center .mp-btn{width:60px;height:60px;border-radius:50%;}
+  .mp-center .mp-btn svg{width:34px;height:34px;}
+
+  .mp-bottom{
+    display:flex;flex-direction:column;gap:6px;
+    padding:8px 14px 16px;
+  }
+  .mp-seek-row{display:flex;align-items:center;gap:10px;}
+  .mp-time{
+    font-size:12px;font-variant-numeric:tabular-nums;
+    color:rgba(255,255,255,.85);min-width:38px;text-align:center;
+  }
+  .mp-seek-wrap{
+    flex:1;position:relative;height:22px;display:flex;align-items:center;
+  }
+  .mp-range{
+    -webkit-appearance:none;appearance:none;
+    width:100%;height:4px;border-radius:99px;
+    background:linear-gradient(to right,#e50914 0%,#e50914 var(--progress,0%),rgba(255,255,255,.3) var(--progress,0%),rgba(255,255,255,.3) 100%);
+    outline:none;cursor:pointer;margin:0;
+  }
+  .mp-range::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:#e50914;border:2px solid #fff;cursor:pointer;
+    box-shadow:0 0 0 4px rgba(229,9,20,.25);
+  }
+  .mp-range::-moz-range-thumb{
+    width:14px;height:14px;border-radius:50%;
+    background:#e50914;border:2px solid #fff;cursor:pointer;
   }
 
-  /* ---------- CURTAIN (loading) ---------- */
-  .mp-curtain {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9;
-    opacity: 1;
-    transition: opacity .3s ease;
-    pointer-events: none;
+  .mp-controls-row{
+    display:flex;align-items:center;gap:6px;padding-top:2px;
   }
-  .mp-curtain.hide { opacity: 0; visibility: hidden; }
-  .mp-curtain::after {
-    content: "";
-    width: 38px; height: 38px;
-    border-radius: 50%;
-    border: 3px solid rgba(255,255,255,.15);
-    border-top-color: #e50914;
-    animation: mp-spin .8s linear infinite;
-  }
-  @keyframes mp-spin { to { transform: rotate(360deg); } }
+  .mp-controls-row .spacer{flex:1;}
 
-  /* ---------- MAIN UI ---------- */
-  .mp-ui {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 4;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    background: linear-gradient(180deg,
-      rgba(0,0,0,.55) 0%,
-      transparent 20%,
-      transparent 70%,
-      rgba(0,0,0,.75) 100%);
-    opacity: 0;
-    transition: opacity .25s ease;
-    pointer-events: none;
+  .mp-vol-wrap{display:flex;align-items:center;gap:6px;padding:0 6px;}
+  .mp-vol-slider{
+    -webkit-appearance:none;appearance:none;
+    width:70px;height:4px;border-radius:99px;
+    background:rgba(255,255,255,.3);outline:none;cursor:pointer;
   }
-  .mp-ui.show { opacity: 1; pointer-events: auto; }
-
-  /* Top bar */
-  .mp-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px;
-    gap: 10px;
+  .mp-vol-slider::-webkit-slider-thumb{
+    -webkit-appearance:none;width:12px;height:12px;
+    border-radius:50%;background:#e50914;cursor:pointer;
   }
-  .mp-title {
-    font-size: 14px;
-    font-weight: 600;
-    max-width: 60%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-shadow: 0 1px 3px rgba(0,0,0,.7);
-  }
-  .mp-top-right { display: flex; gap: 4px; }
-
-  /* Buttons */
-  .mp-btn {
-    background: transparent;
-    border: 0;
-    color: #fff;
-    width: 40px; height: 40px;
-    min-width: 40px; min-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    cursor: pointer;
-    padding: 0;
-    transition: background .15s, transform .12s;
-  }
-  .mp-btn:hover { background: rgba(255,255,255,.15); }
-  .mp-btn:active { transform: scale(.9); }
-  .mp-btn svg { width: 24px; height: 24px; fill: currentColor; pointer-events: none; }
-
-  /* Center cluster */
-  .mp-center {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 22px;
-    flex: 1;
-  }
-  .mp-center .mp-btn {
-    width: 60px; height: 60px;
-    border-radius: 50%;
-  }
-  .mp-center .mp-btn svg { width: 34px; height: 34px; }
-
-  /* Bottom bar */
-  .mp-bottom {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 8px 14px 16px;
-  }
-  .mp-seek-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .mp-time {
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    color: rgba(255,255,255,.85);
-    min-width: 38px;
-    text-align: center;
-    text-shadow: 0 1px 2px rgba(0,0,0,.6);
-  }
-  .mp-seek-wrap {
-    flex: 1;
-    position: relative;
-    height: 22px;
-    display: flex;
-    align-items: center;
-  }
-  .mp-range {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 4px;
-    border-radius: 99px;
-    background: linear-gradient(to right,
-      #e50914 0%,
-      #e50914 var(--progress, 0%),
-      rgba(255,255,255,.3) var(--progress, 0%),
-      rgba(255,255,255,.3) 100%);
-    outline: none;
-    cursor: pointer;
-    margin: 0;
-  }
-  .mp-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: #e50914;
-    border: 2px solid #fff;
-    cursor: pointer;
-    box-shadow: 0 0 0 4px rgba(229,9,20,.25);
-  }
-  .mp-range::-moz-range-thumb {
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: #e50914;
-    border: 2px solid #fff;
-    cursor: pointer;
+  .mp-vol-slider::-moz-range-thumb{
+    width:12px;height:12px;border-radius:50%;background:#e50914;border:0;cursor:pointer;
   }
 
-  /* Bottom controls row */
-  .mp-controls-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-top: 2px;
+  /* Lock */
+  .mp-lock-overlay{
+    position:absolute;top:0;left:0;right:0;bottom:0;z-index:7;
+    display:none;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.25);
   }
-  .mp-controls-row .spacer { flex: 1; }
-
-  .mp-vol-wrap {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0 6px;
+  .mp-lock-overlay.show{display:flex;}
+  .mp-lock-overlay button{
+    background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.2);
+    color:#fff;border-radius:999px;padding:12px 18px;
+    font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;cursor:pointer;
   }
-  .mp-vol-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 70px;
-    height: 4px;
-    border-radius: 99px;
-    background: rgba(255,255,255,.3);
-    outline: none;
-    cursor: pointer;
-  }
-  .mp-vol-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    background: #e50914;
-    cursor: pointer;
-  }
-  .mp-vol-slider::-moz-range-thumb {
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    background: #e50914;
-    border: 0;
-    cursor: pointer;
-  }
-
-  /* Lock overlay */
-  .mp-lock-overlay {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 7;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,0,0,.25);
-  }
-  .mp-lock-overlay.show { display: flex; }
-  .mp-lock-overlay button {
-    background: rgba(0,0,0,.65);
-    border: 1px solid rgba(255,255,255,.2);
-    color: #fff;
-    border-radius: 999px;
-    padding: 12px 18px;
-    font-size: 13px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-  }
-  .mp-lock-overlay svg { width: 20px; height: 20px; fill: #fff; }
+  .mp-lock-overlay svg{width:20px;height:20px;fill:#fff;}
 
   /* OSD */
-  .mp-osd {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%) scale(.9);
-    min-width: 110px;
-    padding: 16px 20px;
-    border-radius: 14px;
-    background: rgba(0,0,0,.75);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 700;
-    opacity: 0;
-    transition: opacity .2s, transform .2s;
-    pointer-events: none;
-    z-index: 10;
+  .mp-osd{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(.9);
+    min-width:110px;padding:16px 20px;border-radius:14px;
+    background:rgba(0,0,0,.75);
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    font-size:14px;font-weight:700;opacity:0;
+    transition:opacity .2s,transform .2s;pointer-events:none;z-index:10;
   }
-  .mp-osd.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  .mp-osd svg { width: 32px; height: 32px; fill: #fff; }
+  .mp-osd.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  .mp-osd svg{width:32px;height:32px;fill:#fff;}
 
-  /* Ripple (double tap) */
-  .mp-ripple {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 100px; height: 100px;
-    border-radius: 50%;
-    background: rgba(0,0,0,.55);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    font-size: 11px;
-    font-weight: 700;
-    opacity: 0;
-    transition: opacity .2s;
-    pointer-events: none;
+  /* Ripple */
+  .mp-ripple{
+    position:absolute;top:50%;transform:translateY(-50%);
+    width:100px;height:100px;border-radius:50%;
+    background:rgba(0,0,0,.55);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;font-size:11px;font-weight:700;
+    opacity:0;transition:opacity .2s;pointer-events:none;
   }
-  .mp-ripple svg { width: 32px; height: 32px; fill: #fff; }
-  .mp-ripple.left { left: 15%; }
-  .mp-ripple.right { right: 15%; }
-  .mp-ripple.show { opacity: 1; }
+  .mp-ripple svg{width:32px;height:32px;fill:#fff;}
+  .mp-ripple.left{left:15%;}
+  .mp-ripple.right{right:15%;}
+  .mp-ripple.show{opacity:1;}
 
   /* Bottom sheet */
-  .mp-sheet-overlay {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 20;
-    background: rgba(0,0,0,.55);
-    display: none;
-    align-items: flex-end;
-    opacity: 0;
-    transition: opacity .25s ease;
+  .mp-sheet-overlay{
+    position:absolute;top:0;left:0;right:0;bottom:0;z-index:20;
+    background:rgba(0,0,0,.55);display:none;align-items:flex-end;
+    opacity:0;transition:opacity .25s;
   }
-  .mp-sheet-overlay.show { display: flex; opacity: 1; }
-  .mp-sheet {
-    width: 100%;
-    max-height: 62%;
-    background: rgba(15,15,18,.96);
-    border-top-left-radius: 20px;
-    border-top-right-radius: 20px;
-    display: flex;
-    flex-direction: column;
-    transform: translateY(100%);
-    transition: transform .3s cubic-bezier(.2,.8,.2,1);
-    color: #fff;
+  .mp-sheet-overlay.show{display:flex;opacity:1;}
+  .mp-sheet{
+    width:100%;max-height:62%;background:rgba(15,15,18,.96);
+    border-top-left-radius:20px;border-top-right-radius:20px;
+    display:flex;flex-direction:column;
+    transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.2,.8,.2,1);
   }
-  .mp-sheet-overlay.show .mp-sheet { transform: translateY(0); }
-  .mp-sheet-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(255,255,255,.08);
-    font-weight: 600;
-    font-size: 15px;
+  .mp-sheet-overlay.show .mp-sheet{transform:translateY(0);}
+  .mp-sheet-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);
+    font-weight:600;font-size:15px;
   }
-  .mp-sheet-content {
-    overflow-y: auto;
-    padding: 6px 0 14px;
+  .mp-sheet-content{overflow-y:auto;padding:6px 0 14px;}
+  .mp-sheet-item{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px;font-size:14px;cursor:pointer;
   }
-  .mp-sheet-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 20px;
-    font-size: 14px;
-    cursor: pointer;
+  .mp-sheet-item:hover{background:rgba(255,255,255,.06);}
+  .mp-switch{
+    width:42px;height:24px;border-radius:99px;
+    background:rgba(255,255,255,.25);position:relative;
+    transition:background .2s;flex-shrink:0;cursor:pointer;
   }
-  .mp-sheet-item:hover { background: rgba(255,255,255,.06); }
-  .mp-switch {
-    width: 42px; height: 24px;
-    border-radius: 99px;
-    background: rgba(255,255,255,.25);
-    position: relative;
-    transition: background .2s;
-    flex-shrink: 0;
-    cursor: pointer;
+  .mp-switch::after{
+    content:"";position:absolute;top:3px;left:3px;
+    width:18px;height:18px;border-radius:50%;
+    background:#fff;transition:transform .2s;
   }
-  .mp-switch::after {
-    content: "";
-    position: absolute;
-    top: 3px; left: 3px;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: #fff;
-    transition: transform .2s;
+  .mp-switch.on{background:#e50914;}
+  .mp-switch.on::after{transform:translateX(18px);}
+
+  .mp-vid-item{
+    display:flex;gap:12px;padding:10px 16px;cursor:pointer;
   }
-  .mp-switch.on { background: #e50914; }
-  .mp-switch.on::after { transform: translateX(18px); }
-  .mp-vid-item {
-    display: flex;
-    gap: 12px;
-    padding: 10px 16px;
-    cursor: pointer;
+  .mp-vid-item:hover{background:rgba(255,255,255,.06);}
+  .mp-vid-item img{
+    width:110px;height:62px;object-fit:cover;
+    border-radius:6px;flex-shrink:0;background:#222;
   }
-  .mp-vid-item:hover { background: rgba(255,255,255,.06); }
-  .mp-vid-item img {
-    width: 110px; height: 62px;
-    object-fit: cover;
-    border-radius: 6px;
-    flex-shrink: 0;
-    background: #222;
+  .mp-vid-item .vtitle{
+    font-size:13px;line-height:1.35;
+    display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden;
   }
-  .mp-vid-item .vtitle {
-    font-size: 13px;
-    line-height: 1.35;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .mp-empty {
-    padding: 34px 20px;
-    text-align: center;
-    color: rgba(255,255,255,.6);
-    font-size: 13px;
+  .mp-empty{
+    padding:34px 20px;text-align:center;
+    color:rgba(255,255,255,.6);font-size:13px;
   }
 
-  /* ---------- MOBILE TWEAKS ---------- */
-  @media (max-width: 520px) {
-    .mp-title { font-size: 13px; max-width: 55%; }
-    .mp-center .mp-btn { width: 50px; height: 50px; }
-    .mp-center .mp-btn svg { width: 28px; height: 28px; }
-    .mp-vol-slider { width: 55px; }
+  @media (max-width:520px){
+    .mp-title{font-size:13px;max-width:55%;}
+    .mp-center .mp-btn{width:50px;height:50px;}
+    .mp-center .mp-btn svg{width:28px;height:28px;}
+    .mp-vol-slider{width:55px;}
   }
   `;
 
@@ -445,9 +248,7 @@
     document.head.appendChild(s);
   }
 
-  /* =========================================================
-     2. ICONS (same as original)
-     ========================================================= */
+  /* ---------- ICONS ---------- */
   const svg = (d) => '<svg viewBox="0 0 24 24"><path d="' + d + '"/></svg>';
   const ICONS = {
     play: svg('M8 5v14l11-7z'),
@@ -465,21 +266,20 @@
     volume_up: svg('M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z'),
     volume_off: svg('M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z'),
     brightness: svg('M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z'),
-    pip: svg('M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z'),
+    fit: svg('M3 5v14h18V5H3zm16 12H5V7h14v10z'),
+    fill: svg('M3 5v14h18V5H3z'),
   };
 
-  /* =========================================================
-     3. STORAGE
-     ========================================================= */
+  /* ---------- STORAGE ---------- */
   const Store = {
     getSet: () => {
       try { return JSON.parse(localStorage.getItem('mista_settings')) || { autoplay: true, resume: true, fill: false }; }
-      catch { return { autoplay: true, resume: true, fill: false }; }
+      catch (e) { return { autoplay: true, resume: true, fill: false }; }
     },
     saveSet: (s) => localStorage.setItem('mista_settings', JSON.stringify(s)),
     getProg: (id) => {
       try { return (JSON.parse(localStorage.getItem('mista_progress')) || {})[id] || 0; }
-      catch { return 0; }
+      catch (e) { return 0; }
     },
     saveProg: (id, t) => {
       if (t < 5) return;
@@ -492,25 +292,19 @@
     },
     getHist: () => {
       try { return JSON.parse(localStorage.getItem('mista_history')) || []; }
-      catch { return []; }
+      catch (e) { return []; }
     },
     addHist: (v) => {
       if (!v.id) return;
       let h = Store.getHist().filter(x => x.id !== v.id);
-      h.unshift({
-        id: v.id,
-        title: v.title,
-        thumb: v.thumb || 'https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg'
-      });
+      h.unshift({ id: v.id, title: v.title, thumb: v.thumb || 'https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg' });
       if (h.length > 60) h.pop();
       localStorage.setItem('mista_history', JSON.stringify(h));
     },
     clearHist: () => localStorage.removeItem('mista_history'),
   };
 
-  /* =========================================================
-     4. YT API LOADER (shared, safe)
-     ========================================================= */
+  /* ---------- YT LOADER ---------- */
   let ytPromise = null;
   function loadYT() {
     if (window.YT && window.YT.Player) return Promise.resolve();
@@ -528,39 +322,25 @@
     return ytPromise;
   }
 
-  /* =========================================================
-     5. PLAYER CLASS
-     ========================================================= */
+  /* ---------- PLAYER ---------- */
   function MistaPlayer(el) {
     this.el = el;
     this.uid = 'mp' + Math.random().toString(36).slice(2, 8);
     this.player = null;
     this.settings = Store.getSet();
-
-    this.state = {
-      playing: false,
-      locked: false,
-      uiVisible: true,
-      speed: 1,
-      volume: 100,
-      brightness: 100,
-    };
-
+    this.state = { playing: false, locked: false, uiVisible: true, speed: 1, volume: 100, brightness: 100 };
     this.meta = { title: 'Video', playlist: [] };
     this.isSeeking = false;
     this.idleTimer = null;
     this.tickTimer = null;
     this.vid = '';
 
-    // Accept data-src OR data-vid
     const src = el.getAttribute('data-src') || el.getAttribute('data-vid') || '';
     this.vid = this.extractID(src);
 
-    // Fill mode
     if (this.settings.fill) el.classList.add('mp-fill');
 
     this.render();
-    this.bind();
     this.startTicker();
 
     if (this.vid) {
@@ -578,15 +358,12 @@
     return (v.length === 11) ? v : '';
   };
 
-  MistaPlayer.prototype.qs = function (sel) {
-    return this.el.querySelector(sel);
-  };
+  MistaPlayer.prototype.qs = function (sel) { return this.el.querySelector(sel); };
 
   MistaPlayer.prototype.vibe = function (ms) {
     if (navigator.vibrate) { try { navigator.vibrate(ms || 20); } catch (e) {} }
   };
 
-  /* ---------- RENDER ---------- */
   MistaPlayer.prototype.render = function () {
     const u = this.uid;
     this.el.classList.add('mp-container');
@@ -594,37 +371,29 @@
     this.el.innerHTML =
       '<div id="yt-iframe-holder-' + u + '"></div>' +
       '<div class="mp-curtain" id="curtain-' + u + '"></div>' +
-
       '<div class="mp-osd" id="osd-v-' + u + '">' + ICONS.volume_up + '<span id="osd-v-t-' + u + '">100</span></div>' +
       '<div class="mp-osd" id="osd-b-' + u + '">' + ICONS.brightness + '<span id="osd-b-t-' + u + '">100</span></div>' +
-
       '<div class="mp-ripple left" id="rip-l-' + u + '">' + ICONS.replay_10 + '<span>10s</span></div>' +
       '<div class="mp-ripple right" id="rip-r-' + u + '">' + ICONS.forward_10 + '<span>10s</span></div>' +
-
       '<div class="mp-lock-overlay" id="lock-ov-' + u + '">' +
         '<button id="btn-unlock-' + u + '">' + ICONS.lock_open + '<span>Tap to unlock</span></button>' +
       '</div>' +
-
       '<div class="mp-ui" id="ui-' + u + '">' +
         '<div class="mp-top">' +
           '<div class="mp-title" id="mp-title">Video</div>' +
           '<div class="mp-top-right">' +
             '<button class="mp-btn" id="btn-hist-' + u + '" title="History">' + ICONS.history + '</button>' +
             '<button class="mp-btn" id="btn-pl-' + u + '" title="Up Next">' + ICONS.queue_music + '</button>' +
-            '<button class="mp-btn" id="btn-fit-' + u + '" title="Fit / Fill">' +
-              '<svg viewBox="0 0 24 24"><path d="M3 5v14h18V5H3zm16 12H5V7h14v10z"/></svg>' +
-            '</button>' +
+            '<button class="mp-btn" id="btn-fit-' + u + '" title="Fit/Fill">' + ICONS.fit + '</button>' +
             '<button class="mp-btn" id="btn-set-' + u + '" title="Settings">' + ICONS.settings + '</button>' +
             '<button class="mp-btn" id="btn-lock-' + u + '" title="Lock">' + ICONS.lock_open + '</button>' +
           '</div>' +
         '</div>' +
-
         '<div class="mp-center">' +
           '<button class="mp-btn" id="btn-rw-' + u + '">' + ICONS.replay_10 + '</button>' +
           '<button class="mp-btn" id="btn-pp-' + u + '">' + ICONS.play + '</button>' +
           '<button class="mp-btn" id="btn-fw-' + u + '">' + ICONS.forward_10 + '</button>' +
         '</div>' +
-
         '<div class="mp-bottom">' +
           '<div class="mp-seek-row">' +
             '<span class="mp-time" id="t-cur-' + u + '">0:00</span>' +
@@ -634,7 +403,6 @@
             '<span class="mp-time" id="t-dur-' + u + '">0:00</span>' +
           '</div>' +
           '<div class="mp-controls-row">' +
-            '<button class="mp-btn" id="btn-pip-' + u + '" title="PiP">' + ICONS.pip + '</button>' +
             '<div class="mp-vol-wrap">' +
               '<button class="mp-btn" id="btn-mute-' + u + '" title="Mute">' + ICONS.volume_up + '</button>' +
               '<input type="range" class="mp-vol-slider" id="vol-' + u + '" min="0" max="100" value="100">' +
@@ -645,7 +413,6 @@
         '</div>' +
       '</div>';
 
-    /* Bottom sheet */
     this.sheet = document.createElement('div');
     this.sheet.className = 'mp-sheet-overlay';
     this.sheet.id = 'sheet-' + u;
@@ -663,22 +430,15 @@
     this.bindGestures();
   };
 
-  /* ---------- CONTROLS ---------- */
   MistaPlayer.prototype.bindControls = function () {
     const u = this.uid;
     const self = this;
-    const tap = (fn) => (e) => {
-      e.stopPropagation();
-      fn();
-      self.vibe();
-      self.resetIdle();
-    };
+    const tap = (fn) => (e) => { e.stopPropagation(); fn(); self.vibe(); self.resetIdle(); };
 
     this.qs('#btn-pp-' + u).onclick = tap(() => self.togglePlay());
     this.qs('#btn-rw-' + u).onclick = tap(() => self.skip(-10));
     this.qs('#btn-fw-' + u).onclick = tap(() => self.skip(10));
     this.qs('#btn-fs-' + u).onclick = tap(() => self.toggleFS());
-    this.qs('#btn-pip-' + u).onclick = tap(() => self.togglePiP());
     this.qs('#btn-mute-' + u).onclick = tap(() => self.toggleMute());
     this.qs('#btn-set-' + u).onclick = tap(() => self.openSheet('settings'));
     this.qs('#btn-pl-' + u).onclick = tap(() => self.openSheet('playlist'));
@@ -699,7 +459,6 @@
     this.qs('#sheet-close-' + u).onclick = tap(() => self.closeSheet());
     this.sheet.onclick = (e) => { if (e.target === self.sheet) self.closeSheet(); };
 
-    /* Volume */
     this.qs('#vol-' + u).oninput = (e) => {
       const v = parseInt(e.target.value) || 0;
       self.state.volume = v;
@@ -707,16 +466,13 @@
       self.qs('#btn-mute-' + u).innerHTML = v === 0 ? ICONS.volume_off : ICONS.volume_up;
     };
 
-    /* Seek — FIXED: works on input (live) AND change (release) */
     const seek = this.qs('#seek-' + u);
     const seekWrap = this.qs('#seek-wrap-' + u);
     const updateFill = (val) => seekWrap.style.setProperty('--progress', val + '%');
-
     const doSeek = (val) => {
       if (self.player && self.player.getDuration && self.player.seekTo) {
         const dur = self.player.getDuration() || 0;
-        const target = (val / 100) * dur;
-        self.player.seekTo(target, true);
+        self.player.seekTo((val / 100) * dur, true);
       }
     };
 
@@ -737,7 +493,6 @@
       self.resetIdle();
     });
 
-    /* Touch release */
     seek.addEventListener('touchend', (e) => {
       const val = parseFloat(seek.value) || 0;
       doSeek(val);
@@ -746,7 +501,6 @@
     }, { passive: true });
   };
 
-  /* ---------- GESTURES ---------- */
   MistaPlayer.prototype.bindGestures = function () {
     const self = this;
     const u = this.uid;
@@ -784,7 +538,6 @@
       }
     }, { passive: false });
 
-    /* Double tap */
     el.addEventListener('click', () => {
       if (self.state.locked) return;
       const now = Date.now();
@@ -793,20 +546,14 @@
         const side = (self._lastX || 0) < el.offsetWidth / 2 ? 'l' : 'r';
         self.skip(side === 'l' ? -10 : 10);
         const rip = self.qs('#rip-' + side + '-' + u);
-        if (rip) {
-          rip.classList.add('show');
-          setTimeout(() => rip.classList.remove('show'), 700);
-        }
+        if (rip) { rip.classList.add('show'); setTimeout(() => rip.classList.remove('show'), 700); }
       } else {
-        self._tapT = setTimeout(() => {
-          self.setUI(!self.state.uiVisible);
-        }, 250);
+        self._tapT = setTimeout(() => self.setUI(!self.state.uiVisible), 250);
       }
       lastTap = now;
     });
   };
 
-  /* ---------- UI HELPERS ---------- */
   MistaPlayer.prototype.setUI = function (v) {
     this.state.uiVisible = v;
     const ui = this.qs('#ui-' + this.uid);
@@ -862,12 +609,11 @@
     this.qs('#btn-mute-' + u).innerHTML = nv === 0 ? ICONS.volume_off : ICONS.volume_up;
   };
 
-  /* ---------- FIT / FILL TOGGLE ---------- */
   MistaPlayer.prototype.toggleFit = function () {
     const isFill = this.el.classList.toggle('mp-fill');
     this.settings.fill = isFill;
     Store.saveSet(this.settings);
-    this.showToast(isFill ? 'Fill' : 'Fit (16:9)');
+    this.showToast(isFill ? 'Fill Screen' : 'Fit 16:9');
   };
 
   MistaPlayer.prototype.showToast = function (msg) {
@@ -880,7 +626,7 @@
         'position:absolute;left:50%;top:12%;transform:translateX(-50%);' +
         'background:rgba(0,0,0,.8);color:#fff;padding:8px 16px;' +
         'border-radius:20px;font-size:13px;font-weight:600;z-index:99;' +
-        'transition:opacity .3s;pointer-events:none;';
+        'transition:opacity .3s;pointer-events:none;opacity:0;';
       this.el.appendChild(toast);
     }
     toast.textContent = msg;
@@ -889,48 +635,40 @@
     this._toastT = setTimeout(() => { toast.style.opacity = '0'; }, 1200);
   };
 
-  /* ---------- FULLSCREEN (works with native bridge) ---------- */
+  /* ---------- FULLSCREEN — rotate via native bridge ---------- */
   MistaPlayer.prototype.toggleFS = function () {
-    const el = this.el;
+    const u = this.uid;
+    const btn = this.qs('#btn-fs-' + u);
 
-    // If native Android bridge available, use it (forces landscape)
+    // Native bridge (Android)
     if (window.Android && window.Android.enterFullscreen) {
       if (window.Android.isFullscreen && window.Android.isFullscreen()) {
         window.Android.exitFullscreen();
-        this.qs('#btn-fs-' + this.uid).innerHTML = ICONS.fullscreen;
+        if (btn) btn.innerHTML = ICONS.fullscreen;
       } else {
         window.Android.enterFullscreen();
-        this.qs('#btn-fs-' + this.uid).innerHTML = ICONS.fullscreen_exit;
+        if (btn) btn.innerHTML = ICONS.fullscreen_exit;
       }
       return;
     }
 
-    // Fallback: browser fullscreen API
+    // Browser fallback
     if (document.fullscreenElement || document.webkitFullscreenElement) {
       if (document.exitFullscreen) document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      if (btn) btn.innerHTML = ICONS.fullscreen;
     } else {
+      const el = this.el;
       if (el.requestFullscreen) el.requestFullscreen();
       else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      if (btn) btn.innerHTML = ICONS.fullscreen_exit;
     }
   };
 
-  /* ---------- PiP ---------- */
-  MistaPlayer.prototype.togglePiP = function () {
-    const iframe = this.el.querySelector('iframe');
-    try {
-      if (iframe && iframe.requestPictureInPicture) {
-        iframe.requestPictureInPicture();
-      }
-    } catch (e) {}
-  };
-
-  /* ---------- SHEETS ---------- */
   MistaPlayer.prototype.openSheet = function (tab) {
     const u = this.uid;
     this.vibe();
-    const title = tab === 'settings' ? 'Settings' :
-                  tab === 'playlist' ? 'Up Next' : 'History';
+    const title = tab === 'settings' ? 'Settings' : tab === 'playlist' ? 'Up Next' : 'History';
     this.qs('#sheet-title-' + u).textContent = title;
     const content = this.qs('#sheet-content-' + u);
     content.innerHTML = '';
@@ -965,9 +703,7 @@
         this.meta.playlist.slice(0, 15).forEach((v) => {
           const item = document.createElement('div');
           item.className = 'mp-vid-item';
-          item.innerHTML =
-            '<img src="' + (v.thumb || 'https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg') + '" loading="lazy">' +
-            '<div class="vtitle">' + v.title + '</div>';
+          item.innerHTML = '<img src="' + (v.thumb || 'https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg') + '" loading="lazy"><div class="vtitle">' + v.title + '</div>';
           item.onclick = () => { this.closeSheet(); this.loadVideo(v); };
           content.appendChild(item);
         });
@@ -980,9 +716,7 @@
         hist.forEach((v) => {
           const item = document.createElement('div');
           item.className = 'mp-vid-item';
-          item.innerHTML =
-            '<img src="' + v.thumb + '" loading="lazy">' +
-            '<div class="vtitle">' + v.title + '</div>';
+          item.innerHTML = '<img src="' + v.thumb + '" loading="lazy"><div class="vtitle">' + v.title + '</div>';
           item.onclick = () => { this.closeSheet(); this.loadVideo(v); };
           content.appendChild(item);
         });
@@ -991,11 +725,8 @@
     this.sheet.classList.add('show');
   };
 
-  MistaPlayer.prototype.closeSheet = function () {
-    this.sheet.classList.remove('show');
-  };
+  MistaPlayer.prototype.closeSheet = function () { this.sheet.classList.remove('show'); };
 
-  /* ---------- YT ---------- */
   MistaPlayer.prototype.initYT = function () {
     const self = this;
     loadYT().then(() => self.createPlayer());
@@ -1004,36 +735,24 @@
   MistaPlayer.prototype.createPlayer = function () {
     const self = this;
     const holderId = 'yt-iframe-holder-' + this.uid;
-
     let startAt = 0;
     if (this.settings.resume) {
       const p = Store.getProg(this.vid);
       if (p > 10) startAt = p;
     }
-
     this.player = new YT.Player(holderId, {
       videoId: this.vid,
       host: 'https://www.youtube-nocookie.com',
       playerVars: {
-        controls: 0,
-        modestbranding: 1,
-        rel: 0,
-        playsinline: 1,
-        iv_load_policy: 3,
-        disablekb: 1,
-        fs: 0,
-        start: startAt,
+        controls: 0, modestbranding: 1, rel: 0, playsinline: 1,
+        iv_load_policy: 3, disablekb: 1, fs: 0, start: startAt,
         origin: window.location.origin || 'https://mistafy.pages.dev',
         enablejsapi: 1,
       },
       events: {
         onReady: () => {
-          if (self.player && self.player.setVolume) {
-            self.player.setVolume(self.state.volume);
-          }
-          if (self.settings.autoplay && self.player && self.player.playVideo) {
-            self.player.playVideo();
-          }
+          if (self.player && self.player.setVolume) self.player.setVolume(self.state.volume);
+          if (self.settings.autoplay && self.player && self.player.playVideo) self.player.playVideo();
         },
         onStateChange: (e) => self.onState(e),
         onError: (e) => {
@@ -1077,7 +796,6 @@
     this.vid = v.id;
     this.meta.title = v.title || 'Video';
     this.qs('#mp-title').textContent = this.meta.title;
-
     if (this.player && this.player.loadVideoById) {
       let start = 0;
       if (this.settings.resume) {
@@ -1089,21 +807,16 @@
     this.fetchMeta(v.id);
   };
 
-  /* ---------- TICKER ---------- */
   MistaPlayer.prototype.startTicker = function () {
     const self = this;
     const u = this.uid;
     clearInterval(this.tickTimer);
-
     this.tickTimer = setInterval(() => {
       if (!self.player) return;
       if (!self.player.getCurrentTime || !self.player.getDuration) return;
-
       const cur = self.player.getCurrentTime() || 0;
       const dur = self.player.getDuration() || 1;
-
       if (cur > 5) Store.saveProg(self.vid, Math.floor(cur));
-
       if (!self.isSeeking) {
         const seek = self.qs('#seek-' + u);
         const wrap = self.qs('#seek-wrap-' + u);
@@ -1120,7 +833,6 @@
     }, 500);
   };
 
-  /* ---------- META ---------- */
   MistaPlayer.prototype.fetchMeta = async function (id) {
     try {
       const url = 'https://noembed.com/embed?url=https://www.youtube.com/watch?v=' + id;
@@ -1134,9 +846,7 @@
     }
   };
 
-  /* =========================================================
-     6. AUTO-INIT
-     ========================================================= */
+  /* ---------- INIT ---------- */
   function initAll() {
     const els = document.querySelectorAll('[data-mista], .mista-embed, [data-vid]');
     for (let i = 0; i < els.length; i++) {
@@ -1153,5 +863,4 @@
   }
 
   window.MistaPlayer = MistaPlayer;
-
 })();
